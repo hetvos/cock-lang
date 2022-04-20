@@ -117,6 +117,8 @@ OP = enum(
 	"BSR",
 	"BSL",
 	"ELIF",
+	"CONST",
+	"PUSH_CONST",
 )
 
 def dict_index(dic,key):
@@ -383,6 +385,8 @@ def cockpile(prog,fp):
 					case OP.ELIF:
 						out.write("jmp addr_%d\n" % op.end)
 						out.write("addr_%d:\n" % op.arg)
+					case OP.PUSH_CONST:
+						out.write("push qword [const_%d]\n" % op.arg)
 					case _:
 						log.error(f"Operation type of token `{op.token.value}` at {op.token.loc} isn't handled, this is probably a bug")
 						exit(1)
@@ -402,6 +406,10 @@ def cockpile(prog,fp):
 		for i, s in enumerate(strs):
 			out.write("str_%d:\n" % i)
 			out.write("db %s\n" % ','.join(map(hex, list(bytes(s, 'utf-8')))))
+		for const in consts:
+			out.write("const_%d:\n" % dict_index(consts,const))
+			if consts[const].type == TOK.STR: out.write("db %s\n" % ','.join(map(hex, list(bytes(consts[const].value, 'utf-8')))))
+			else: out.write("db %d\n" % consts[const].value)
 		out.write("segment .bss\n")
 		out.write("mem: resb %d\n" % MEM)
 		out.write("ret_stack_rsp: resq 1\n")
@@ -452,9 +460,11 @@ BUILTINS = {
 	"<<": OP.BSL,
 	">>": OP.BSR,
 	"elif": OP.ELIF,
+	"const": OP.CONST,
 }
 
 macros = {}
+consts = {}
 
 def compile_prog(tokens):
 	ifs = []
@@ -468,6 +478,8 @@ def compile_prog(tokens):
 				return Oper(type=BUILTINS[token.value], token=token)
 			elif token.value in macros:
 				return Oper(type=OP.CALL, token=token, arg=dict_index(macros,token.value))
+			elif token.value in consts:
+				return Oper(type=OP.PUSH_CONST, token=token, arg=dict_index(consts,token.value))
 			else:
 				log.error("word_to_op",f"({token.loc[0]}:{token.loc[1]}:{token.loc[2]})  Word `{token.value}` isn't a builtin or a function.")
 				exit(1)
@@ -522,6 +534,14 @@ def compile_prog(tokens):
 					if blocks == 0: break
 					else: blocks -= 1
 				macros[macro.value].append(token)
+		elif op.type == OP.CONST:
+			name=rtokens.pop()
+			value=rtokens.pop()
+			end=rtokens.pop()
+			assert name.type == TOK.WORD, "[ERROR] The name of a constant must be a `word`"
+			assert value.type != TOK.WORD, "[ERROR] The value of a constant can't be a `word`"
+			assert end.value == "end", "[ERROR] Constant isn't ended."
+			consts[name.value] = value
 		elif op.type in [OP.ELSE, OP.ELIF]:
 			ind = ifs.pop()
 			assert program[ind].type in [OP.DO], "[ERROR] `else` can only be used with `if` and `elif` statements"
