@@ -1,16 +1,75 @@
 #!/usr/bin/env python3
 
 import subprocess
-import clock
 from pathlib import Path
 import time
 
 from os.path import expanduser
 
-from cocksize import enum
-from lexer import lex_file, TOK
+class logger:
+	def __call__(self,nam,msg):
+		print(f"\u001b[1m\u001b[34;1m[{nam}]\u001b[0m",msg)
+	def error(self,*args):
+		if len(args) >= 2:
+			args = list(args)
+			nam = args.pop(0)
+			print(f"\u001b[1m\u001b[31;1m[\u001b[37;1m{nam} > \u001b[31;1mERROR]\u001b[0m"," ".join(args))
+		else:
+			print(f"\u001b[1m\u001b[31;1m[ERROR]\u001b[0m"," ".join(args))
 
-from classes import *
+class enum:
+	def __init__(self,*args):
+		cnt = 0
+		for prop in args:
+			setattr(self, prop, cnt)
+			cnt += 1
+
+TOK = enum(
+	"WORD",
+	"INT",
+	"STR",
+	"BOOL",
+)
+
+def find_col(text,start,check):
+	while start < len(text) and not check(text[start]):
+		start += 1
+	return start
+
+def lex_line(line):
+	col = find_col(line, 0, lambda x: not x.isspace())
+	while col < len(line):
+		if line[col] == '"':
+			col_end = find_col(line, col+1, lambda x: x == '"')
+			word = line[col+1:col_end]
+			yield (col, TOK.STR, bytes(word,"utf-8").decode("unicode_escape"))
+			col = find_col(line, col_end+1, lambda x: not x.isspace())
+		else:
+			col_end = find_col(line, col, lambda x: x.isspace())
+			word = line[col:col_end]
+			try: yield (col, TOK.INT, int(word))
+			except:
+				if word in ["true","false"]: yield (col, TOK.BOOL, bool(word))
+				else: yield (col, TOK.WORD, word)
+			col = find_col(line, col_end, lambda x: not x.isspace())
+
+def lex_file(fpath):
+	with open(fpath,"r") as f:
+		return [Token(loc=(fpath,line,col), type=toktype, value=value) for (line, text) in enumerate(f.readlines()) for (col, toktype, value) in lex_line(text.split("$")[0])]
+
+class Oper:
+	def __init__(self,type,token,**kwargs):
+		self.type = type
+		self.token = token
+		self.arg = kwargs.get("arg")
+		self.jmp = kwargs.get("jmp")
+		self.end = kwargs.get("end")
+
+class Token:
+	def __init__(self,loc,type,value):
+		self.loc = loc
+		self.type = type
+		self.value = value
 
 MEM = 640_000
 
@@ -350,7 +409,7 @@ def cockpile(prog,fp):
 		out.write("ret_stack_end:\n")
 		out.close()
 
-log = clock.logger()
+log = logger()
 
 BUILTINS = {
 	"+": OP.SUM,
@@ -509,7 +568,7 @@ if __name__ == "__main__":
 			while check_flag(argv,"-q","--quiet"):
 				if silence == 2: break
 				silence += 1
-		if silence >= 1: clock.logger.__call__ = lambda a,b,c: None
+		if silence >= 1: logger.__call__ = lambda a,b,c: None
 		if silence >= 2: log.error = lambda a,b=None: None
 		prog = compile_prog(lex_file(argv[1]))
 		fp=Path(argv[1])
