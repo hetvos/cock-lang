@@ -1,0 +1,17 @@
+fun prin
+	1 1 syscall3 drop
+	"\n" 1 1 syscall3 drop
+end
+
+fun write 1 syscall3 end
+fun bdrop swap drop end
+
+fun octal-to-dec
+	100 / swap 10 / swap rot 64 * rot 8 * + +
+end
+
+fun fopen
+	ddup drop + 1 + "\0" bdrop . swap - 1 - 777 octal-to-dec 102 octal-to-dec rot 2 syscall3 bdrop
+end
+
+fun STDOUT 1 end

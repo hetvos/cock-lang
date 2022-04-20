@@ -1,0 +1,35 @@
+import "std/stdlib.cock"
+
+mem 100 2 - + 1 .
+
+0 while dup 50 2 - < do
+   0 while dup 100 < do
+      dup mem + , if
+         dup mem + 100 + 35 .
+      else
+         dup mem + 100 + 32 .
+      end
+      1 +
+   end
+   mem + 100 + 10 .
+   100 1 + mem 100 + 1 write drop
+
+   mem     , 1 <<
+   mem 1 + ,
+   ||
+
+   1 while dup 100 2 - < do
+      swap 1 << 7 &
+      ddup drop mem + 1 + , ||
+      ddup 110 swap >> 1 &
+      swap mem + swap .
+      swap
+
+      1 +
+   end
+   drop drop
+
+   1 +
+end
+drop
+
