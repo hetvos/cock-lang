@@ -44,6 +44,8 @@ def lex_line(line):
 			word = line[col+1:col_end]
 			yield (col, TOK.STR, bytes(word,"utf-8").decode("unicode_escape"))
 			col = find_col(line, col_end+1, lambda x: not x.isspace())
+		elif line[col] == '$':
+			break
 		else:
 			col_end = find_col(line, col, lambda x: x.isspace())
 			word = line[col:col_end]
@@ -55,7 +57,7 @@ def lex_line(line):
 
 def lex_file(fpath):
 	with open(fpath,"r") as f:
-		return [Token(loc=(fpath,line,col), type=toktype, value=value) for (line, text) in enumerate(f.readlines()) for (col, toktype, value) in lex_line(text.split("$")[0])]
+		return [Token(loc=(fpath,line,col), type=toktype, value=value) for (line, text) in enumerate(f.readlines()) for (col, toktype, value) in lex_line(text)]
 
 class Oper:
 	def __init__(self,type,token,**kwargs):
