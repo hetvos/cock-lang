@@ -324,6 +324,7 @@ def cockpile(prog,fp):
 						out.write("mov [rax],bl\n")
 					case OP.LOAD:
 						out.write("pop rax\n")
+						out.write("xor rbx,rbx\n")
 						out.write("mov bl,[rax]\n")
 						out.write("push rbx\n")
 					case OP.WHILE:
@@ -466,6 +467,8 @@ BUILTINS = {
 macros = {}
 consts = {}
 
+lastaddr = -1
+
 def compile_prog(tokens):
 	ifs = []
 	refs = []
@@ -500,19 +503,22 @@ def compile_prog(tokens):
 						log.error("compile_prog",f"Failed to import `{imported.value}`")
 						exit(1)
 		elif op.type == OP.END:
+			global lastaddr
 			ind = ifs.pop()
-			op.arg = i
+			lastaddr += 1
+			op.arg = lastaddr
 			if program[ind].type in [OP.DO, OP.ELSE]:
 				ind2 = ifs.pop()
 				if program[ind2].type == OP.WHILE:
-					program[ind].jmp = i
-					program[ind2].arg = ind2
-					op.jmp = ind2
+					program[ind].jmp = lastaddr
+					lastaddr += 1
+					program[ind2].arg = lastaddr
+					op.jmp = lastaddr
 				elif program[ind2].type in [OP.IF, OP.ELIF, OP.ELSE]:
-					program[ind].jmp = i
-					program[ind2].end = i
+					program[ind].jmp = lastaddr
+					program[ind2].end = lastaddr
 					while len(refs) > 0:
-						program[refs.pop()].end = i
+						program[refs.pop()].end = lastaddr
 				else:
 					log.error("`do` can only be used with `while`, `if` and `elif`")
 					exit(1)
@@ -526,10 +532,10 @@ def compile_prog(tokens):
 			assert macro.value not in macros, "[ERROR] Attempted to redefine an existing function."
 			assert macro.value not in BUILTINS, "[ERROR] Attempted to redefine a builtin."
 			macros[macro.value] = []
+			blocks = 0
 			while len(rtokens) > 0:
-				blocks = 0
 				token = rtokens.pop()
-				if token.value in ["if","while","fun"]: blocks += 1
+				if token.value in ["while","if","fun"]: blocks += 1
 				elif token.value == "end":
 					if blocks == 0: break
 					else: blocks -= 1
