@@ -535,7 +535,7 @@ def compile_prog(tokens):
 			blocks = 0
 			while len(rtokens) > 0:
 				token = rtokens.pop()
-				if token.value in ["while","if","fun"]: blocks += 1
+				if token.value in ["do","const","fun"]: blocks += 1
 				elif token.value == "end":
 					if blocks == 0: break
 					else: blocks -= 1
