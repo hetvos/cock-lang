@@ -3,6 +3,10 @@ fun prin
 	"\n" 1 1 syscall3 drop
 end
 
+fun writeout
+	1 1 syscall3 drop
+end
+
 fun write 1 syscall3 end
 fun bdrop swap drop end
 
@@ -14,4 +18,4 @@ fun fopen
 	ddup drop + 1 + "\0" bdrop . swap - 1 - 777 octal-to-dec 102 octal-to-dec rot 2 syscall3 bdrop
 end
 
-fun STDOUT 1 end
+const STDOUT 1 end

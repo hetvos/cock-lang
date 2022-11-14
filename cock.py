@@ -3,6 +3,7 @@
 import subprocess
 from pathlib import Path
 import time
+import sys
 
 from os.path import expanduser
 
@@ -13,9 +14,9 @@ class logger:
 		if len(args) >= 2:
 			args = list(args)
 			nam = args.pop(0)
-			print(f"\u001b[1m\u001b[31;1m[\u001b[37;1m{nam} > \u001b[31;1mERROR]\u001b[0m"," ".join(args))
+			print(f"\u001b[1m\u001b[31;1m[\u001b[37;1m{nam} > \u001b[31;1mERROR]\u001b[0m"," ".join(args),file=sys.stderr)
 		else:
-			print(f"\u001b[1m\u001b[31;1m[ERROR]\u001b[0m"," ".join(args))
+			print(f"\u001b[1m\u001b[31;1m[ERROR]\u001b[0m"," ".join(args), file=sys.stderr)
 
 class enum:
 	def __init__(self,*args):
@@ -73,7 +74,9 @@ class Token:
 		self.type = type
 		self.value = value
 
-MEM = 640_000
+MEM = 1_280_000
+
+COCK_IMPORTPATHS = [".","~/.local/cock/libs","/usr/local/lib"]
 
 OP = enum(
 	"PUSH",
@@ -291,7 +294,7 @@ def cockpile(prog,fp):
 						out.write("push rax\n")
 					case OP.SYS0:
 						out.write("pop rax\n")
-						out.write("syscall")
+						out.write("syscall\n")
 						out.write("push rax\n")
 					case OP.SWAP:
 						out.write("pop rax\n")
@@ -471,6 +474,8 @@ consts = {}
 
 lastaddr = -1
 
+prev_imports = []
+
 def compile_prog(tokens):
 	ifs = []
 	refs = []
@@ -496,14 +501,24 @@ def compile_prog(tokens):
 		op = word_to_op(rtokens.pop())
 		if op.type == OP.IMPORT:
 			imported = rtokens.pop()
-			try: rtokens += reversed(lex_file(imported.value))
-			except:
-				try: rtokens += reversed(lex_file("./std/"+imported.value))
+			importpath = None
+
+			for path in COCK_IMPORTPATHS:
+				path = Path(path).expanduser().joinpath(imported.value).absolute()
+				if path.exists():
+					importpath = path
+					break
+
+			if importpath == None:
+				log.error("compile_prog",f"File `{importpath}` does not exist")
+				exit(1)
+			elif importpath.name not in prev_imports:
+				prev_imports.append(importpath.name)
+				try: rtokens += reversed(lex_file(importpath))
 				except:
-					try: rtokens += reversed(lex_file(expanduser("~/.local/cock/libs/"+imported.value)))
-					except: 
-						log.error("compile_prog",f"Failed to import `{imported.value}`")
-						exit(1)
+					log.error("compile_prog",f"Failed to import `{importpath}`")
+					exit(1)
+
 		elif op.type == OP.END:
 			global lastaddr
 			ind = ifs.pop()
@@ -519,13 +534,15 @@ def compile_prog(tokens):
 				elif program[ind2].type in [OP.IF, OP.ELIF, OP.ELSE]:
 					program[ind].jmp = lastaddr
 					program[ind2].end = lastaddr
-					while len(refs) > 0:
+					while len(refs) > 1:
+						ifs.pop()
 						program[refs.pop()].end = lastaddr
+					program[refs.pop()].end = lastaddr
 				else:
 					log.error("`do` can only be used with `while`, `if` and `elif`")
 					exit(1)
 			else:
-				log.error("`end` was used to close a nonexistant block at {op.token.loc}")
+				log.error(f"`end` was used to close a nonexistant block at {op.token.loc}")
 				exit(1)
 			program.append(op)
 			i += 1
@@ -537,7 +554,7 @@ def compile_prog(tokens):
 			blocks = 0
 			while len(rtokens) > 0:
 				token = rtokens.pop()
-				if token.value in ["do","const","fun"]: blocks += 1
+				if token.value in ["if","while","const","fun"]: blocks += 1
 				elif token.value == "end":
 					if blocks == 0: break
 					else: blocks -= 1
@@ -555,7 +572,7 @@ def compile_prog(tokens):
 			assert program[ind].type in [OP.DO], "[ERROR] `else` can only be used with `if` and `elif` statements"
 			program[ind].jmp = i
 			op.arg = i
-			refs.append(ind)
+			refs.append(i)
 		elif op.type not in [OP.IF,OP.WHILE,OP.DO,OP.ELSE,OP.ELIF]:
 			program.append(op)
 			i += 1
@@ -599,11 +616,11 @@ if __name__ == "__main__":
 		if silence >= 1: logger.__call__ = lambda a,b,c: None
 		if silence >= 2: log.error = lambda a,b=None: None
 		prog = compile_prog(lex_file(argv[1]))
-		fp=Path(argv[1])
 		if tmp: fp = Path(f"tmp-{time.time_ns()}-{argv[1]}")
+		else: fp=Path(argv[1])
 		asm = str(fp.with_suffix(".asm"))
 		obj = str(fp.with_suffix(".o"))
-		com_bin = str(fp.with_suffix(""))
+		com_bin = str(fp.stem)
 		cockpile(prog,fp)
 		run_cmd(["nasm", "-felf64", asm])
 		run_cmd(["ld", obj, "-o", com_bin])
