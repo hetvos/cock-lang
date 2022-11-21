@@ -394,7 +394,7 @@ def cockpile(prog,fp):
 					case OP.PUSH_CONST:
 						out.write("push qword [const_%d]\n" % op.arg)
 					case _:
-						log.error(f"Operation type of token `{op.token.value}` at {op.token.loc} isn't handled, this is probably a bug")
+						log.error(format_loc(op.token.loc),f"Operation type of token `{op.token.value}` isn't handled, this is probably a bug")
 						exit(1)
 		op_to_asm(prog)
 		out.write("mov rax,60\n")
@@ -491,7 +491,7 @@ def compile_prog(tokens):
 			elif token.value in consts:
 				return Oper(type=OP.PUSH_CONST, token=token, arg=dict_index(consts,token.value))
 			else:
-				log.error("word_to_op",f"({token.loc[0]}:{token.loc[1]}:{token.loc[2]})  Word `{token.value}` isn't a builtin or a function.")
+				log.error(format_loc(token.loc),f"Word `{token.value}` isn't defined.")
 				exit(1)
 		elif token.type in [TOK.INT, TOK.BOOL]:
 			return Oper(type=OP.PUSH, token=token, arg=int(token.value))
@@ -510,13 +510,13 @@ def compile_prog(tokens):
 					break
 
 			if importpath == None:
-				log.error("compile_prog",f"File `{importpath}` does not exist")
+				log.error(format_loc(op.token.loc), f"File `{importpath}` does not exist")
 				exit(1)
 			elif importpath.name not in prev_imports:
 				prev_imports.append(importpath.name)
 				try: rtokens += reversed(lex_file(importpath))
 				except:
-					log.error("compile_prog",f"Failed to import `{importpath}`")
+					log.error(format_loc(op.token.loc),f"Failed to import `{importpath}`")
 					exit(1)
 
 		elif op.type == OP.END:
@@ -539,17 +539,21 @@ def compile_prog(tokens):
 						program[refs.pop()].end = lastaddr
 					program[refs.pop()].end = lastaddr
 				else:
-					log.error("`do` can only be used with `while`, `if` and `elif`")
+					log.error(format_loc(op.token.loc),"`do` can only be used with `while`, `if` and `elif`")
 					exit(1)
 			else:
-				log.error(f"`end` was used to close a nonexistant block at {op.token.loc}")
+				log.error(format_loc(op.token.loc),f"`end` was used to close a nonexistant block")
 				exit(1)
 			program.append(op)
 			i += 1
 		elif op.type == OP.MACRO:
 			macro = rtokens.pop()
-			assert macro.value not in macros, "[ERROR] Attempted to redefine an existing function."
-			assert macro.value not in BUILTINS, "[ERROR] Attempted to redefine a builtin."
+			if macro.value in macros:
+				log.error(format_loc(macro.loc),f"Attempted to redefine existing function `{macro.value}`.")
+				exit(1)
+			if macro.value in BUILTINS:
+				log.error(format_loc(macro.loc),f"Attempted to redefine a builtin.")
+				exit(1)
 			macros[macro.value] = []
 			blocks = 0
 			while len(rtokens) > 0:
@@ -563,9 +567,15 @@ def compile_prog(tokens):
 			name=rtokens.pop()
 			value=rtokens.pop()
 			end=rtokens.pop()
-			assert name.type == TOK.WORD, "[ERROR] The name of a constant must be a `word`"
-			assert value.type != TOK.WORD, "[ERROR] The value of a constant can't be a `word`"
-			assert end.value == "end", "[ERROR] Constant isn't ended."
+			if name.type != TOK.WORD:
+				log.error(format_loc(name.loc), "The name of a constant must be a `word`")
+				exit(1)
+			if value.type == TOK.WORD:
+				log.error(format_loc(value.loc), "The value of a constant can't be a `word`")
+				exit(1)
+			if end.value != "end":
+				log.error(format_loc(end.loc),"Constant must be closed with `end`")
+				exit(1)
 			consts[name.value] = value
 		elif op.type in [OP.ELSE, OP.ELIF]:
 			ind = ifs.pop()
@@ -585,6 +595,9 @@ def compile_prog(tokens):
 def run_cmd(cmd):
 	log("CMD", " ".join(cmd))
 	subprocess.call(cmd)
+
+def format_loc(loc):
+	return f"{loc[0]}:{loc[1]}:{loc[2]}"
 
 def check_flag(flags,*args):
 	result = False
