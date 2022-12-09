@@ -129,7 +129,7 @@ OP = enum(
 def dict_index(dic,key):
 	return list(dic.keys()).index(key)
 
-def cockpile(prog,fp):
+def cockpile_nasm_linux_x86_elf64(prog,fp):
 	strs = []
 	with open(fp.with_suffix(".asm"),"w") as out:
 		out.write("section .text\n")
@@ -242,8 +242,10 @@ def cockpile(prog,fp):
 						out.write("cmovle rcx,rdi\n")
 						out.write("push rcx\n")
 					case OP.IF:
+						out.write(";; if\n")
 						pass
 					case OP.END:
+						out.write(";; end\n")
 						if op.jmp:
 							out.write("jmp addr_%d\n" % op.jmp)
 						out.write("addr_%d:\n" % op.arg)
@@ -366,6 +368,7 @@ def cockpile(prog,fp):
 						out.write("xor rax,rbx\n")
 						out.write("push rax\n")
 					case OP.ELSE:
+						out.write(";; else\n")
 						out.write("jmp addr_%d\n" % op.jmp)
 						out.write("addr_%d:\n" % op.arg)
 					case OP.NOT:
@@ -389,6 +392,7 @@ def cockpile(prog,fp):
 						out.write("shr rbx,cl\n")
 						out.write("push rbx\n")
 					case OP.ELIF:
+						out.write(";; elif\n")
 						out.write("jmp addr_%d\n" % op.end)
 						out.write("addr_%d:\n" % op.arg)
 					case OP.PUSH_CONST:
@@ -531,13 +535,13 @@ def compile_prog(tokens):
 					lastaddr += 1
 					program[ind2].arg = lastaddr
 					op.jmp = lastaddr
-				elif program[ind2].type in [OP.IF, OP.ELIF, OP.ELSE]:
+				elif program[ind2].type in [OP.IF,OP.ELIF, OP.ELSE]:
 					program[ind].jmp = lastaddr
 					program[ind2].end = lastaddr
-					while len(refs) > 1:
-						ifs.pop()
+					if len(refs) == 0: lastaddr += 1
+					while len(refs) > 0:
+						if len(ifs) > 1: ifs.pop()
 						program[refs.pop()].end = lastaddr
-					program[refs.pop()].end = lastaddr
 				else:
 					log.error(format_loc(op.token.loc),"`do` can only be used with `while`, `if` and `elif`")
 					exit(1)
@@ -607,19 +611,41 @@ def check_flag(flags,*args):
 			result = True
 	return result
 
+def check_flag_arg(flags,*args):
+	result = False
+	for arg in args:
+		if arg in flags:
+			flagindex = flags.index(arg)
+			if len(flags) >= flagindex + 2:
+				result = flags[flagindex + 1]
+	return result
+
 if __name__ == "__main__":
 	from sys import argv
 	
-	if len(argv) < 2:
+	if len(argv) < 2 or check_flag(argv,"-h","--help"):
 		log.error("You must provide a file to compile!")
 		print(f"Usage: {argv[0]} [options] <file>")
 		print(f"Options:")
 		print(f"	-r --run: Runs the program after compiling.")
 		print(f"	-t --temp: Writes to temporary files which get deleted after compilation. (Useful with `-r`)")
 		print(f"	-q --quiet: Disables standard logging, if used twice it also disables error logging")
+		print(f"	--target <target>: Sets the build target (default: nasm-linux-x86-elf64)")
+		exit(1)
 	else:
 		run = check_flag(argv,"-r","--run")
 		tmp = check_flag(argv,"-t","--temp")
+		target = check_flag_arg(argv,"--target")
+		if target == False: target = "nasm-linux-x86-elf64"
+		match target:
+			case "nasm-linux-x86-elf64":
+				cockpile = cockpile_nasm_linux_x86_elf64
+				asm_cmd = lambda asm: ["nasm","-felf64",asm]
+				link_cmd = lambda obj, com_bin: ["ld", obj, "-o", com_bin]
+				cleanup_cmd = lambda obj: ["rm", obj]
+			case _:
+				log.error("Unknown target specified!")
+				exit(1)
 		silence = 0
 		if check_flag(argv,"-qq"): silence = 2
 		else:
@@ -635,8 +661,8 @@ if __name__ == "__main__":
 		obj = str(fp.with_suffix(".o"))
 		com_bin = str(fp.stem)
 		cockpile(prog,fp)
-		run_cmd(["nasm", "-felf64", asm])
-		run_cmd(["ld", obj, "-o", com_bin])
-		run_cmd(["rm", obj])
+		run_cmd(asm_cmd(asm))
+		run_cmd(link_cmd(obj,com_bin))
+		run_cmd(cleanup_cmd(obj))
 		if run: run_cmd([f"./{com_bin}"])
 		if tmp: run_cmd(["rm", asm, com_bin])
