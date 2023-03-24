@@ -1,13 +1,22 @@
+$ import linux syscall abstractions
+import "std/linux.cock"
+$ more syscall abstractions soonTM (once there is actual support for other OSes/architectures)
+
+$ TODO: deprecate prin
 fun prin
-	1 1 syscall3 drop
-	"\n" 1 1 syscall3 drop
+	STDOUT write drop
+	"\n" STDOUT write drop
 end
 
-fun writeout
-	1 1 syscall3 drop
+$ `write`s to stdout`and discards the return code
+fun print STDOUT write drop end
+
+$ simply `print` but ends in newline
+fun println 
+	print 
+	"\n" print
 end
 
-fun write 1 syscall3 end
 fun bdrop swap drop end
 
 fun octal-to-dec
@@ -17,5 +26,3 @@ end
 fun fopen
 	ddup drop + 1 + "\0" bdrop . swap - 1 - 777 octal-to-dec 102 octal-to-dec rot 2 syscall3 bdrop
 end
-
-const STDOUT 1 end

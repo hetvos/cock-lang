@@ -1,0 +1,5 @@
+const STDOUT 1 end
+
+fun write
+	1 syscall3
+end
